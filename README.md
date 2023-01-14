@@ -1,0 +1,2 @@
+# Sunny_Boy_Logger
+SB_Logger is a basic data logger for SMA SB1.5 and similar series PV inverters. It can be run as a service. It creates a new log file for each day and adds one line to the log file each minute that there is a non zero power output from the inverter. The inverter name has been hard coded into the source file and will need to be changed to match the inverter serial number. It should work with 1.5 kW and 2.5 kW inverters, for other inverters the Modbus register that are read may need to be changed.
