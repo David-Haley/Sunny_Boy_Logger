@@ -1,7 +1,8 @@
 -- This package provides data logging for the SMA SB1.5-VL-40
 -- Author    : David Haley
 -- Created   : 04/04/2021
--- Last Edit : 04/01/2023
+-- Last Edit : 22/04/2023
+-- 20230422: Spaces removed from log file records.
 -- 20230104: Frequencies supported renge changed from 0.0 .. 53 to 40 .. 60.
 -- Change prompted by an exception which occored on 26/12/2022.
 -- 20220909: Voltage and current ranges increased after exception raised on DC
@@ -15,6 +16,8 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Directories; use Ada.Directories;
 with Ada.Calendar.Time_Zones; use Ada.Calendar.Time_Zones;
 with Ada.Calendar.Formatting; use Ada.Calendar.Formatting;
+with Ada.Strings; use Ada.Strings;
+with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Interfaces; use Interfaces;
 with GNAT.Sockets; use GNAT.Sockets;
 with DJH.Modbus; use DJH.Modbus;
@@ -119,9 +122,9 @@ package body Data_Logger is
       else
          Create (Logging_File, Out_File, Logging_Path (This_Time) &
                    Logging_File_Name (This_Time));
-         Put_Line (Logging_File, "Time, DC Current, DC Voltage, " &
-                     "DC Power, AC Current, AC Voltage, AC Power, " &
-                     "Frequency, Daily Yield, Total Yield");
+         Put_Line (Logging_File, "Time, DC Current,DC Voltage," &
+                     "DC Power,AC Current,AC Voltage,AC Power," &
+                     "Frequency,Daily Yield,Total Yield");
          -- write header in logging file
       end if; -- Exists (Logging_Path (This_Time) & ...
    exception
@@ -196,6 +199,7 @@ package body Data_Logger is
       DC_Current, AC_Current : Currents;
       DC_Voltage, AC_Voltage : Voltages;
       Frequency : Frequencies;
+      Out_String : String (1 ..15);
 
    begin -- Put_Log_Entry
       Read_Registers (Unit_Id, Yeild);
@@ -212,23 +216,27 @@ package body Data_Logger is
          AC_Voltage := Voltages (To_U32 (L1_Voltage)) / 100.0;
          Frequency := Frequencies (To_U32 (Grid_Frequency)) / 100.0;
          Put (Logging_File, Current_Time & ',');
-         Current_IO.Put (Logging_File, DC_Current, 3, 3, 0);
-         Put (Logging_File, ',');
-         Voltage_IO.Put (Logging_File, DC_Voltage, 4, 2, 0);
-         Put (Logging_File, ',');
-         Put (Logging_File, To_U32 (Power (30773 .. 30774))'Img & ',');
+         Current_IO.Put (Out_String, DC_Current, 3, 0);
+         Put (Logging_File, Trim (Out_String, Both) & ',');
+         Voltage_IO.Put (Out_String, DC_Voltage, 2, 0);
+         Put (Logging_File, Trim (Out_String, Both) & ',');
+         Put (Logging_File, Trim (To_U32 (Power (30773 .. 30774))'Img, Both) &
+              ',');
          -- DC Power
-         Current_IO.Put (Logging_File, AC_Current, 3, 3, 0);
-         Put (Logging_File, ',');
-         Voltage_IO.Put (Logging_File, AC_Voltage, 4, 2, 0);
-         Put (Logging_File, ',');
-         Put (Logging_File, To_U32 (Power (30775 .. 30776))'Img & ',');
+         Current_IO.Put (Out_String, AC_Current, 3, 0);
+         Put (Logging_File, Trim (Out_String, Both) & ',');
+         Voltage_IO.Put (Out_String, AC_Voltage, 2, 0);
+         Put (Logging_File, Trim (Out_String, Both) & ',');
+         Put (Logging_File, Trim (To_U32 (Power (30775 .. 30776))'Img, Both) &
+              ',');
          -- AC Power
-         Frequency_IO.Put (Logging_File, Frequency, 3, 2, 0);
-         Put (Logging_File, ',');
-         Put (Logging_File, To_U64 (Yeild (30517 .. 30520))'Img & ',');
+         Frequency_IO.Put (Out_String, Frequency, 2, 0);
+         Put (Logging_File, Trim (Out_String, Both) & ',');
+         Put (Logging_File, Trim (To_U64 (Yeild (30517 .. 30520))'Img, Both) &
+              ',');
          -- Daily Yield
-         Put_Line (Logging_File, To_U64 (Yeild (30513 .. 30516))'Img);
+         Put_Line (Logging_File, Trim (To_U64 (Yeild (30513 .. 30516))'Img,
+                                       Both));
          -- Total Yield:
       end if; -- To_U32 (Power (30769 .. 30770)) /= 0 and ...
    exception
