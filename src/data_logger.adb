@@ -2,7 +2,7 @@
 -- Author    : David Haley
 -- Created   : 04/04/2021
 -- Last Edit : 22/04/2023
--- 20230422: Spaces removed from log file records.
+-- 20230422: Spaces removed from log file records and space removed from header.
 -- 20230104: Frequencies supported renge changed from 0.0 .. 53 to 40 .. 60.
 -- Change prompted by an exception which occored on 26/12/2022.
 -- 20220909: Voltage and current ranges increased after exception raised on DC
@@ -122,7 +122,7 @@ package body Data_Logger is
       else
          Create (Logging_File, Out_File, Logging_Path (This_Time) &
                    Logging_File_Name (This_Time));
-         Put_Line (Logging_File, "Time, DC Current,DC Voltage," &
+         Put_Line (Logging_File, "Time,DC Current,DC Voltage," &
                      "DC Power,AC Current,AC Voltage,AC Power," &
                      "Frequency,Daily Yield,Total Yield");
          -- write header in logging file
