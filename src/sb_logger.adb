@@ -1,7 +1,8 @@
 -- Main program for logging SB 1.5 VL -40 via Modbus
 -- Author    : David Haley
 -- Created   : 04/04/2021
--- Last Edit : 04/01/2023
+-- Last Edit : 22/04/2023
+-- 20230422: Spaces removed from log file records.
 -- 20230104: Frequencies supported renge changed from 0.0 .. 53 to 40 .. 60.
 -- Change prompted by an exception which occored on 26/12/2022.
 -- 20220909: Voltage and current ranges increased after exception raised on DC
@@ -16,7 +17,7 @@ with Data_Logger; use Data_Logger;
 
 procedure SB_Logger is
 
-Start_Message : String := "SB_Logger 20230104 Started";
+Start_Message : String := "SB_Logger 20230422 Started";
 
 begin -- SB_Logger
    Start_Events;
