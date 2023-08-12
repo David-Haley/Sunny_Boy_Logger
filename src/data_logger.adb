@@ -1,7 +1,8 @@
 -- This package provides data logging for the SMA SB1.5-VL-40
 -- Author    : David Haley
 -- Created   : 04/04/2021
--- Last Edit : 22/04/2023
+-- Last Edit : 12/08/2023
+-- 20230612: exception handlers reraise exception.
 -- 20230422: Spaces removed from log file records and space removed from header.
 -- 20230104: Frequencies supported renge changed from 0.0 .. 53 to 40 .. 60.
 -- Change prompted by an exception which occored on 26/12/2022.
@@ -130,6 +131,7 @@ package body Data_Logger is
    exception
       when E : others =>
          Put_Error ("Open_Log_File", E);
+         raise;
    end Open_Log_File;
 
    function Is_Next_Day (Old_Time, New_Time : Time) return Boolean is
@@ -242,6 +244,7 @@ package body Data_Logger is
    exception
       when E : others =>
          Put_Error ("Put_Log_Entry", E);
+         raise;
    end Put_Log_Entry;
 
    task body Logger is
@@ -291,6 +294,7 @@ package body Data_Logger is
    exception
       when E : others =>
          Put_Error ("Logger", E);
+         raise;
    end Logger;
 
 end Data_Logger;
