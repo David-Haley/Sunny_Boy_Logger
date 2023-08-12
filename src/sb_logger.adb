@@ -18,7 +18,7 @@ with Data_Logger; use Data_Logger;
 
 procedure SB_Logger is
 
-Start_Message : String := "SB_Logger 20230422 Started";
+Start_Message : String := "SB_Logger 20230812 Started";
 
 begin -- SB_Logger
    Start_Events;
