@@ -2,6 +2,8 @@
 -- Author    : David Haley
 -- Created   : 04/04/2021
 -- Last Edit :12/08/2023
+-- 20230909: Changed order in termination in exception handler. Forced
+-- termination of logger task  used.
 -- 20230812: Handelers removed during error shutdown.
 -- 20230422: Spaces removed from log file records.
 -- 20230104: Frequencies supported renge changed from 0.0 .. 53 to 40 .. 60.
@@ -18,7 +20,7 @@ with Data_Logger; use Data_Logger;
 
 procedure SB_Logger is
 
-Start_Message : String := "SB_Logger 20230812 Started";
+Start_Message : String := "SB_Logger 20230909 Started";
 
 begin -- SB_Logger
    Start_Events;
@@ -45,8 +47,10 @@ begin -- SB_Logger
 exception
    when E : others =>
       Put_Error ("Unhandled error", E);
-      Put_Event ("Error exit");
+      Put_Event ("Aborting Logger task");
+      abort Logger;
+      Put_Event ("Removing signal handlers");
       Handlers.Remove;
+      Put_Event ("Error exit");
       Stop_Events;
-      Logger.Stop;
 end SB_Logger;
