@@ -1,9 +1,11 @@
 -- Main program for logging SB 1.5 VL -40 via Modbus
 -- Author    : David Haley
 -- Created   : 04/04/2021
--- Last Edit :12/08/2023
+-- Last Edit : 23/09/2023
+-- 20230923: Some tiding up, inclusion of Default Inverter, change to Logger to
+-- improve the probability of termination when errors occur.
 -- 20230909: Changed order in termination in exception handler. Forced
--- termination of logger task  used.
+-- termination of logger task provided.
 -- 20230812: Handelers removed during error shutdown.
 -- 20230422: Spaces removed from log file records.
 -- 20230104: Frequencies supported renge changed from 0.0 .. 53 to 40 .. 60.
@@ -20,21 +22,22 @@ with Data_Logger; use Data_Logger;
 
 procedure SB_Logger is
 
-Start_Message : String := "SB_Logger 20230909 Started";
+Start_Message : String := "SB_Logger 20230923 Started, Inverter: ";
+Default_Inverter : String := "SMA1930015238";
 
 begin -- SB_Logger
    Start_Events;
    Handlers.Install;
-   delay (45.0); -- Wait for DNS service availability
+   delay 45.0; -- Wait for DNS service availability
    if Argument_Count > 1 then
-      Put_Event (Start_Message & ' ' & Argument (1) & Argument (2));
+      Put_Event (Start_Message & Argument (1) & " Port: " & Argument (2));
       Logger.Start (Argument (1), Argument (2));
    elsif Argument_Count > 0 then
-      Put_Event (Start_Message & ' ' & Argument (1));
+      Put_Event (Start_Message & Argument (1));
       Logger.Start (Argument (1));
    else
-      Put_Event (Start_Message);
-      Logger.Start ("SMA1930015238");
+      Put_Event (Start_Message & Default_Inverter);
+      Logger.Start (Default_inverter);
    end if; -- Argument_Count > 1
    loop
       delay 1.0;

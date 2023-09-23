@@ -1,7 +1,9 @@
 -- This package provides data logging for the SMA SB1.5-VL-40
 -- Author    : David Haley
 -- Created   : 04/04/2021
--- Last Edit : 12/08/2023
+-- Last Edit : 23/09/2023
+-- 20230923: When an exception occurs the logging file and Modbus connection are 
+-- explicitly closed.
 -- 20230612: exception handlers reraise exception.
 -- 20230422: Spaces removed from log file records and space removed from header.
 -- 20230104: Frequencies supported renge changed from 0.0 .. 53 to 40 .. 60.
@@ -294,6 +296,8 @@ package body Data_Logger is
    exception
       when E : others =>
          Put_Error ("Logger", E);
+         Close (Logging_File);
+         Close_Connection;
          raise;
    end Logger;
 
