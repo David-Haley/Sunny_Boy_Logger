@@ -207,7 +207,7 @@ package body Data_Logger is
       DC_Voltage, AC_Voltage : Voltages;
       Frequency : Frequencies;
       Out_String : String (1 ..15);
-      Log_Entry : Unbounded_String := To_Unbounded_String (Time_String & "'");
+      Log_Entry : Unbounded_String := To_Unbounded_String (Time_String & ",");
       Valid_Entry : Boolean := True;
       Error_Prefix : String := "Put_Log_Entry - ";
 
@@ -260,7 +260,7 @@ package body Data_Logger is
          Voltage_IO.Put (Out_String, AC_Voltage, 2, 0);
          Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
          Log_Entry := Log_Entry &
-           Trim (To_U32 (Power (30775 .. 30776))'Img, Both) & '.';
+           Trim (To_U32 (Power (30775 .. 30776))'Img, Both) & ',';
          -- AC Power
          begin -- Frequency exception block
             Frequency := Frequencies (To_U32 (Grid_Frequency)) / 100.0;
@@ -278,7 +278,7 @@ package body Data_Logger is
            Trim (To_U64 (Yeild (30513 .. 30516))'Img, Both);
          -- Total Yield:
          if Valid_entry then
-            Put_Line (Log_Entry);
+            Put_Line (Logging_File, Log_Entry);
          else
             Put_Event ("Error in log entry");
          end if; -- Valid_Entry
