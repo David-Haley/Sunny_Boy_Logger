@@ -1,7 +1,9 @@
 -- This package provides data logging for the SMA SB1.5-VL-40
 -- Author    : David Haley
 -- Created   : 04/04/2021
--- Last Edit : 23/09/2023
+-- Last Edit : 01/03/2025
+-- 20250301: Provision made to restart connection after a Modbus error and fine
+-- grained exception handling provided on SMA type conversions.
 -- 20230923: When an exception occurs the logging file and Modbus connection are 
 -- explicitly closed.
 -- 20230612: exception handlers reraise exception.
@@ -16,11 +18,13 @@
 -- NAN for U_32.
 
 with Ada.Text_IO; use Ada.Text_IO;
+with Ada.Text_IO.Unbounded_IO; use Ada.Text_IO.Unbounded_IO;
 with Ada.Directories; use Ada.Directories;
 with Ada.Calendar.Time_Zones; use Ada.Calendar.Time_Zones;
 with Ada.Calendar.Formatting; use Ada.Calendar.Formatting;
 with Ada.Strings; use Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Interfaces; use Interfaces;
 with GNAT.Sockets; use GNAT.Sockets;
 with DJH.Modbus; use DJH.Modbus;
@@ -178,7 +182,7 @@ package body Data_Logger is
       Open_Log_File (Logging_File, Next_Log_Entry);
    end Start_Logging;
 
-   Procedure Put_Log_Entry (Logging_File : in out File_Type) is
+   procedure Put_Log_Entry (Logging_File : in out File_Type) is
 
       type Currents is delta 0.001 range 0.0 .. 12000.0;
       -- 1000 times required range to allow for division by 1000.0
@@ -194,7 +198,6 @@ package body Data_Logger is
       package Frequency_IO is new Ada.Text_IO.Fixed_IO (Frequencies);
 
       Unit_Id : constant Unit_Ids := 3;
-      Current_Time : Time_Strings := Time_String;
       Yeild : Register_Arrays (30513 .. 30520);
       Power : Register_Arrays (30769 .. 30776);
       L1_Current : Register_Arrays (30977 .. 30978);
@@ -204,6 +207,9 @@ package body Data_Logger is
       DC_Voltage, AC_Voltage : Voltages;
       Frequency : Frequencies;
       Out_String : String (1 ..15);
+      Log_Entry : Unbounded_String := To_Unbounded_String (Time_String & "'");
+      Valid_Entry : Boolean := True;
+      Error_Prefix : String := "Put_Log_Entry - ";
 
    begin -- Put_Log_Entry
       Read_Registers (Unit_Id, Yeild);
@@ -214,54 +220,93 @@ package body Data_Logger is
       if To_U32 (Power (30769 .. 30770)) /= 0 and
         To_U32 (Power (30769 .. 30770)) /= 16#80000000# then
          -- generating some power
-         DC_Current := Currents (To_U32 (Power (30769 .. 30770))) / 1000.0;
-         DC_Voltage := Voltages (To_U32 (Power (30771 .. 30772))) / 100.0;
-         AC_Current := Currents (To_U32 (L1_Current)) / 1000.0;
-         AC_Voltage := Voltages (To_U32 (L1_Voltage)) / 100.0;
-         Frequency := Frequencies (To_U32 (Grid_Frequency)) / 100.0;
-         Put (Logging_File, Current_Time & ',');
+         begin -- DC_Current exception block
+            DC_Current := Currents (To_U32 (Power (30769 .. 30770))) / 1000.0;
+         exception
+            when E : others =>
+               Put_Error (Error_Prefix & "DC_Current", E);
+               Valid_Entry := False;
+         end; -- DC_Current exception block
          Current_IO.Put (Out_String, DC_Current, 3, 0);
-         Put (Logging_File, Trim (Out_String, Both) & ',');
+         Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
+         begin -- DC_Voltage exceptiob block
+            DC_Voltage := Voltages (To_U32 (Power (30771 .. 30772))) / 100.0;
+         exception
+            when E : others =>
+               Put_Error (Error_Prefix & "DC_Voltage", E);
+               Valid_Entry := False;
+         end; -- DC_Voltage exceptiob block
          Voltage_IO.Put (Out_String, DC_Voltage, 2, 0);
-         Put (Logging_File, Trim (Out_String, Both) & ',');
-         Put (Logging_File, Trim (To_U32 (Power (30773 .. 30774))'Img, Both) &
-              ',');
+         Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
+         Log_Entry := Log_Entry &
+           Trim (To_U32 (Power (30773 .. 30774))'Img, Both) & ',';
          -- DC Power
+         begin -- AC_Current exception block
+            AC_Current := Currents (To_U32 (L1_Current)) / 1000.0;
+         exception
+            when E : others =>
+               Put_Error (Error_Prefix & "AC_Current", E);
+               Valid_Entry := False;
+         end; -- AC_Current exception block
          Current_IO.Put (Out_String, AC_Current, 3, 0);
-         Put (Logging_File, Trim (Out_String, Both) & ',');
+         Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
+         begin -- AC_Voltage exception bloc
+           AC_Voltage := Voltages (To_U32 (L1_Voltage)) / 100.0;
+         exception
+            when E : others =>
+               Put_Error (Error_Prefix & "AC_Voltage", E);
+               Valid_Entry := False;
+         end; -- AC_Voltage exception block
          Voltage_IO.Put (Out_String, AC_Voltage, 2, 0);
-         Put (Logging_File, Trim (Out_String, Both) & ',');
-         Put (Logging_File, Trim (To_U32 (Power (30775 .. 30776))'Img, Both) &
-              ',');
+         Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
+         Log_Entry := Log_Entry &
+           Trim (To_U32 (Power (30775 .. 30776))'Img, Both) & '.';
          -- AC Power
+         begin -- Frequency exception block
+            Frequency := Frequencies (To_U32 (Grid_Frequency)) / 100.0;
+         exception
+            when E : others =>
+               Put_Error (Error_Prefix & "Frequency", E);
+               Valid_Entry := False;
+         end; -- Frequency exception block
          Frequency_IO.Put (Out_String, Frequency, 2, 0);
-         Put (Logging_File, Trim (Out_String, Both) & ',');
-         Put (Logging_File, Trim (To_U64 (Yeild (30517 .. 30520))'Img, Both) &
-              ',');
+         Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
+         Log_Entry := Log_Entry &
+           Trim (To_U64 (Yeild (30517 .. 30520))'Img, Both) & ',';
          -- Daily Yield
-         Put_Line (Logging_File, Trim (To_U64 (Yeild (30513 .. 30516))'Img,
-                                       Both));
+         Log_Entry := Log_Entry &
+           Trim (To_U64 (Yeild (30513 .. 30516))'Img, Both);
          -- Total Yield:
+         if Valid_entry then
+            Put_Line (Log_Entry);
+         else
+            Put_Event ("Error in log entry");
+         end if; -- Valid_Entry
       end if; -- To_U32 (Power (30769 .. 30770)) /= 0 and ...
    exception
       when E : others =>
-         Put_Error ("Put_Log_Entry", E);
+         Put_Error (Error_Prefix & "unhandled exception", E);
          raise;
    end Put_Log_Entry;
 
    task body Logger is
+   
+      Inverter_Name_Store, Port_Store : Unbounded_String;
       Run_Logger : Boolean := True;
       Next_Time, Previous_Time : Time;
 
    begin -- Logger
       accept Start (Inverter_Name : in String; Port : in String := "") do
+         Inverter_Name_Store := To_Unbounded_String (Inverter_Name);
+         Port_Store := To_Unbounded_String (Port);
          Start_Logging (Logging_File, Next_Time);
          Previous_Time := Next_Time - Log_Interval;
-         if Port'Length = 0 then
-            Connect (Inverter_Name);
+         if Length (Port_Store) = 0 then
+            Connect (To_String (Inverter_Name_Store));
          else
-            Connect (Inverter_Name, Port_Type'Value (Port));
-         end if; -- Port'Length = 0
+            Connect (To_String (Inverter_Name_store),
+                     Port_Type'Value (To_String (Port_Store)));
+         end if; -- Length (Port_Store) = 0
       end Start;
       While Run_Logger loop
          select
@@ -286,7 +331,20 @@ package body Data_Logger is
                Previous_Time := Next_Time;
                Next_Time := Next_Time + Log_Interval;
             end if; -- Is_Next_Day (Previous_Time, Next_Time)
-            Put_Log_Entry (Logging_File);
+            begin -- Read_innverter_exception block
+               Put_Log_Entry (Logging_File);
+            exception
+               when Modbus_Error =>
+                  Close_Connection;
+                  Delay 30.0;
+                  if Length (Port_Store) = 0 then
+                     Connect (To_String (Inverter_Name_Store));
+                  else
+                     Connect (To_String (Inverter_Name_store),
+                              Port_Type'Value (To_String (Port_Store)));
+                  end if; -- Length (Port_Store) = 0
+                  Put_Event ("Restarting Modbus connection");
+            end; -- Read_innverter_exception block
             if Clock >= Logging_File_Commit_Time.Get_Next_File_Commit then
                Flush (Logging_File);
                Logging_File_Commit_Time.Set_Next_File_Commit;
