@@ -1,7 +1,9 @@
 -- Main program for logging SB 1.5 VL -40 via Modbus
 -- Author    : David Haley
 -- Created   : 04/04/2021
--- Last Edit : 01/03/2025
+-- Last Edit : 18/04/2025
+
+-- 20250418: Rebuilt with updated DJH.Events_and_Errors.
 -- 20250301: Provision made to restart connection after a Modbus error and fine
 -- grained exception handling provided on SMA type conversions.
 -- 20230923: Some tiding up, inclusion of Default Inverter, change to Logger to
@@ -24,11 +26,10 @@ with Data_Logger; use Data_Logger;
 
 procedure SB_Logger is
 
-Start_Message : String := "SB_Logger 20250301 Started, Inverter: ";
+Start_Message : String := "SB_Logger 20250418 Started, Inverter: ";
 Default_Inverter : String := "SMA1930015238";
 
 begin -- SB_Logger
-   Start_Events;
    Handlers.Install;
    delay 45.0; -- Wait for DNS service availability
    if Argument_Count > 1 then
