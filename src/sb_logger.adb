@@ -1,8 +1,9 @@
 -- Main program for logging SB 1.5 VL -40 via Modbus
 -- Author    : David Haley
 -- Created   : 04/04/2021
--- Last Edit : 18/04/2025
+-- Last Edit : 27/04/2025
 
+-- 20250427: Added checks for SMA NaN values.
 -- 20250418: Rebuilt with updated DJH.Events_and_Errors.
 -- 20250301: Provision made to restart connection after a Modbus error and fine
 -- grained exception handling provided on SMA type conversions.
@@ -26,7 +27,7 @@ with Data_Logger; use Data_Logger;
 
 procedure SB_Logger is
 
-Start_Message : String := "SB_Logger 20250418 Started, Inverter: ";
+Start_Message : String := "SB_Logger 20250427 Started, Inverter: ";
 Default_Inverter : String := "SMA1930015238";
 
 begin -- SB_Logger

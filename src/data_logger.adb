@@ -1,7 +1,9 @@
 -- This package provides data logging for the SMA SB1.5-VL-40
 -- Author    : David Haley
 -- Created   : 04/04/2021
--- Last Edit : 01/03/2025
+-- Last Edit : 27/04/2025
+
+-- 20250427: Added checks for SMA NaN values.
 -- 20250301: Provision made to restart connection after a Modbus error and fine
 -- grained exception handling provided on SMA type conversions.
 -- 20230923: When an exception occurs the logging file and Modbus connection are 
@@ -198,28 +200,38 @@ package body Data_Logger is
       package Frequency_IO is new Ada.Text_IO.Fixed_IO (Frequencies);
 
       Unit_Id : constant Unit_Ids := 3;
-      Yeild : Register_Arrays (30513 .. 30520);
+      NaN_S32 : constant Unsigned_32 := 16#80000000#;
+      NaN_U32 : constant Unsigned_32 := 16#FFFFFFFF#;
+      NaN_U64 : constant Unsigned_64 := 16#FFFFFFFFFFFFFFFF#;
+      Yield : Register_Arrays (30513 .. 30520);
       Power : Register_Arrays (30769 .. 30776);
       L1_Current : Register_Arrays (30977 .. 30978);
       L1_Voltage : Register_Arrays (30783 .. 30784);
-      Grid_Frequency : Register_Arrays(30803 .. 30804);
+      Grid_Frequency : Register_Arrays (30803 .. 30804);
       DC_Current, AC_Current : Currents;
       DC_Voltage, AC_Voltage : Voltages;
       Frequency : Frequencies;
-      Out_String : String (1 ..15);
+      Out_String : String (1 .. 15);
       Log_Entry : Unbounded_String := To_Unbounded_String (Time_String & ",");
-      Valid_Entry : Boolean := True;
-      Error_Prefix : String := "Put_Log_Entry - ";
+      Valid_Entry : Boolean;
+      Error_Prefix : constant String := "Put_Log_Entry - ";
 
    begin -- Put_Log_Entry
-      Read_Registers (Unit_Id, Yeild);
+      Read_Registers (Unit_Id, Yield);
       Read_Registers (Unit_Id, Power);
       Read_Registers (Unit_Id, L1_Current);
       Read_Registers (Unit_Id, L1_Voltage);
       Read_Registers (Unit_Id, Grid_Frequency);
-      if To_U32 (Power (30769 .. 30770)) /= 0 and
-        To_U32 (Power (30769 .. 30770)) /= 16#80000000# then
-         -- generating some power
+      Valid_Entry := To_U32 (Power (30775 .. 30776)) > 0 and -- AC power
+        To_U32 (Power (30775 .. 30776)) /= NaN_S32 and
+        To_U32 (Power (30769 .. 30770)) /= NaN_S32 and -- DC current
+        To_U32 (Power (30771 .. 30772)) /= NaN_S32 and -- DC voltage
+        To_U32 (Power (30773 .. 30774)) /= NaN_S32 and -- DC power
+        To_U32 (L1_Current) /= NaN_S32 and To_U32 (L1_Voltage) /= NaN_U32 and
+        To_U32 (Grid_Frequency) /= NaN_U32 and
+        To_U64 (Yield (30513 ..30516)) /= NaN_U64 and -- Total yield
+        To_U64 (Yield (30517 ..30520)) /= NaN_U64; --
+      if Valid_entry then
          begin -- DC_Current exception block
             DC_Current := Currents (To_U32 (Power (30769 .. 30770))) / 1000.0;
          exception
@@ -227,8 +239,6 @@ package body Data_Logger is
                Put_Error (Error_Prefix & "DC_Current", E);
                Valid_Entry := False;
          end; -- DC_Current exception block
-         Current_IO.Put (Out_String, DC_Current, 3, 0);
-         Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
          begin -- DC_Voltage exceptiob block
             DC_Voltage := Voltages (To_U32 (Power (30771 .. 30772))) / 100.0;
          exception
@@ -236,11 +246,6 @@ package body Data_Logger is
                Put_Error (Error_Prefix & "DC_Voltage", E);
                Valid_Entry := False;
          end; -- DC_Voltage exceptiob block
-         Voltage_IO.Put (Out_String, DC_Voltage, 2, 0);
-         Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
-         Log_Entry := Log_Entry &
-           Trim (To_U32 (Power (30773 .. 30774))'Img, Both) & ',';
-         -- DC Power
          begin -- AC_Current exception block
             AC_Current := Currents (To_U32 (L1_Current)) / 1000.0;
          exception
@@ -248,8 +253,6 @@ package body Data_Logger is
                Put_Error (Error_Prefix & "AC_Current", E);
                Valid_Entry := False;
          end; -- AC_Current exception block
-         Current_IO.Put (Out_String, AC_Current, 3, 0);
-         Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
          begin -- AC_Voltage exception bloc
            AC_Voltage := Voltages (To_U32 (L1_Voltage)) / 100.0;
          exception
@@ -257,11 +260,6 @@ package body Data_Logger is
                Put_Error (Error_Prefix & "AC_Voltage", E);
                Valid_Entry := False;
          end; -- AC_Voltage exception block
-         Voltage_IO.Put (Out_String, AC_Voltage, 2, 0);
-         Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
-         Log_Entry := Log_Entry &
-           Trim (To_U32 (Power (30775 .. 30776))'Img, Both) & ',';
-         -- AC Power
          begin -- Frequency exception block
             Frequency := Frequencies (To_U32 (Grid_Frequency)) / 100.0;
          exception
@@ -269,20 +267,25 @@ package body Data_Logger is
                Put_Error (Error_Prefix & "Frequency", E);
                Valid_Entry := False;
          end; -- Frequency exception block
+      end if; -- Valid_Entry
+      if Valid_Entry then
+         Current_IO.Put (Out_String, DC_Current, 3, 0);
+         Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
+         Voltage_IO.Put (Out_String, DC_Voltage, 2, 0);
+         Log_Entry := Log_Entry & Trim (Out_String, Both) & ',' &
+           Trim (To_U32 (Power (30773 .. 30774))'Img, Both) & ','; -- DC Power
+         Current_IO.Put (Out_String, AC_Current, 3, 0);
+         Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
+         Voltage_IO.Put (Out_String, AC_Voltage, 2, 0);
+         Log_Entry := Log_Entry & Trim (Out_String, Both) & ',' &
+           Trim (To_U32 (Power (30775 .. 30776))'Img, Both) & ','; -- AC Power
          Frequency_IO.Put (Out_String, Frequency, 2, 0);
          Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
          Log_Entry := Log_Entry &
-           Trim (To_U64 (Yeild (30517 .. 30520))'Img, Both) & ',';
-         -- Daily Yield
-         Log_Entry := Log_Entry &
-           Trim (To_U64 (Yeild (30513 .. 30516))'Img, Both);
-         -- Total Yield:
-         if Valid_entry then
-            Put_Line (Logging_File, Log_Entry);
-         else
-            Put_Event ("Error in log entry");
-         end if; -- Valid_Entry
-      end if; -- To_U32 (Power (30769 .. 30770)) /= 0 and ...
+           Trim (To_U64 (Yield (30517 .. 30520))'Img, Both) & ',' & -- Day Yield
+           Trim (To_U64 (Yield (30513 .. 30516))'Img, Both); -- Total Yield
+         Put_Line (Logging_File, Log_Entry);
+      end if; -- Valid_Entry
    exception
       when E : others =>
          Put_Error (Error_Prefix & "unhandled exception", E);
