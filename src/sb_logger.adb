@@ -1,8 +1,11 @@
 -- Main program for logging SB 1.5 VL -40 via Modbus
 -- Author    : David Haley
 -- Created   : 04/04/2021
--- Last Edit : 27/04/2025
+-- Last Edit : 26/10/2026
 
+-- 20261026: Logger task supervised, if it terminates or stops updating its
+-- heartbeat the program exits with failure status, allowing systemd to restart
+-- the service.
 -- 20250427: Added checks for SMA NaN values.
 -- 20250418: Rebuilt with updated DJH.Events_and_Errors.
 -- 20250301: Provision made to restart connection after a Modbus error and fine
@@ -21,14 +24,20 @@
 -- 20220813: Modified to work as a service.
 
 with Ada.Command_line; use Ada.Command_line;
+with GNAT.OS_Lib;
 with DJH.Events_and_Errors; use DJH.Events_and_Errors;
 with Linux_Signals; use Linux_Signals;
 with Data_Logger; use Data_Logger;
 
 procedure SB_Logger is
 
-Start_Message : String := "SB_Logger 20250427 Started, Inverter: ";
+Start_Message : String := "SB_Logger 20261026 Started, Inverter: ";
 Default_Inverter : String := "SMA1930015238";
+Heartbeat_Timeout : constant Duration := 300.0;
+-- Five logging intervals, all Modbus operations are time limited
+
+function Logger_Failed return Boolean is
+  (Logger'Terminated or else Heartbeat_Age > Heartbeat_Timeout);
 
 begin -- SB_Logger
    Handlers.Install;
@@ -45,12 +54,21 @@ begin -- SB_Logger
    end if; -- Argument_Count > 1
    loop
       delay 1.0;
-      exit when Handlers.Signal_Stop or Ctrl_C_Stop;
+      exit when Handlers.Signal_Stop or Ctrl_C_Stop or Logger_Failed;
    end loop;
    Handlers.Remove;
-   Logger.Stop;
-   Put_Event ("Normal exit");
-   Stop_Events;
+   if not (Handlers.Signal_Stop or Ctrl_C_Stop) then
+      Put_Event ("Logger task failed or hung, exiting to allow restart");
+      abort Logger;
+      Put_Event ("Error exit");
+      Stop_Events;
+      GNAT.OS_Lib.OS_Exit (1);
+      -- Does not wait for the Logger task, which may be blocked
+   else
+      Logger.Stop;
+      Put_Event ("Normal exit");
+      Stop_Events;
+   end if; -- not (Handlers.Signal_Stop or Ctrl_C_Stop)
 exception
    when E : others =>
       Put_Error ("Unhandled error", E);
@@ -60,4 +78,5 @@ exception
       Handlers.Remove;
       Put_Event ("Error exit");
       Stop_Events;
+      GNAT.OS_Lib.OS_Exit (1);
 end SB_Logger;
