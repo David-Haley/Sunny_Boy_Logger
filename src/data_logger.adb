@@ -1,8 +1,11 @@
 -- This package provides data logging for the SMA SB1.5-VL-40
 -- Author    : David Haley
 -- Created   : 04/04/2021
--- Last Edit : 27/04/2025
+-- Last Edit : 26/10/2026
 
+-- 20261026: Modbus connection is (re)established at the next logging interval
+-- after any failure, including failure to connect on start up. Connection
+-- events logged only on change of state. Heartbeat added.
 -- 20250427: Added checks for SMA NaN values.
 -- 20250301: Provision made to restart connection after a Modbus error and fine
 -- grained exception handling provided on SMA type conversions.
@@ -27,6 +30,7 @@ with Ada.Calendar.Formatting; use Ada.Calendar.Formatting;
 with Ada.Strings; use Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Ada.Real_Time;
 with Interfaces; use Interfaces;
 with GNAT.Sockets; use GNAT.Sockets;
 with DJH.Modbus; use DJH.Modbus;
@@ -94,6 +98,46 @@ package body Data_Logger is
    end File_Commit_Times;
 
    Logging_File_Commit_Time : File_Commit_Times;
+
+   protected Heartbeat is
+
+      procedure Beat;
+      -- Records the current time
+
+      function Get_Last_Beat return Ada.Real_Time.Time;
+      -- Gets time of last beat
+
+   private
+      Last_Beat : Ada.Real_Time.Time := Ada.Real_Time.Clock;
+   end Heartbeat;
+
+   protected body Heartbeat is
+
+      procedure Beat is
+         -- Records the current time
+
+      begin -- Beat
+         Last_Beat := Ada.Real_Time.Clock;
+      end Beat;
+
+      function Get_Last_Beat return Ada.Real_Time.Time is
+         -- Gets time of last beat
+
+      begin -- Get_Last_Beat
+         return Last_Beat;
+      end Get_Last_Beat;
+
+   end Heartbeat;
+
+   function Heartbeat_Age return Duration is
+      -- Returns the time since the Logger task last completed a logging cycle
+
+      use type Ada.Real_Time.Time;
+
+   begin -- Heartbeat_Age
+      return Ada.Real_Time.To_Duration
+        (Ada.Real_Time.Clock - Heartbeat.Get_Last_Beat);
+   end Heartbeat_Age;
 
    function Read_File_Commit_Time return Time is
       -- Returns time of next file commit, that is, Flush (xx)
@@ -287,16 +331,41 @@ package body Data_Logger is
          Put_Line (Logging_File, Log_Entry);
       end if; -- Valid_Entry
    exception
+      when Modbus_Error =>
+         raise; -- reported by Logger
       when E : others =>
          Put_Error (Error_Prefix & "unhandled exception", E);
          raise;
    end Put_Log_Entry;
 
    task body Logger is
-   
+
       Inverter_Name_Store, Port_Store : Unbounded_String;
       Run_Logger : Boolean := True;
       Next_Time, Previous_Time : Time;
+      Was_Connected : Boolean := True;
+      -- Assumed True so that a failure to connect at start up is logged
+
+      procedure Try_Connect is
+         -- Attempts to connect, failure is logged only if the previous
+         -- attempt succeeded, retry occurs at the next logging interval.
+
+      begin -- Try_Connect
+         if Length (Port_Store) = 0 then
+            Connect (To_String (Inverter_Name_Store));
+         else
+            Connect (To_String (Inverter_Name_Store),
+                     Port_Type'Value (To_String (Port_Store)));
+         end if; -- Length (Port_Store) = 0
+         Put_Event ("Modbus connected");
+         Was_Connected := True;
+      exception
+         when E : Modbus_Error =>
+            if Was_Connected then
+               Put_Error ("Logger - Modbus connection failed, will retry", E);
+               Was_Connected := False;
+            end if; -- Was_Connected
+      end Try_Connect;
 
    begin -- Logger
       accept Start (Inverter_Name : in String; Port : in String := "") do
@@ -304,13 +373,9 @@ package body Data_Logger is
          Port_Store := To_Unbounded_String (Port);
          Start_Logging (Logging_File, Next_Time);
          Previous_Time := Next_Time - Log_Interval;
-         if Length (Port_Store) = 0 then
-            Connect (To_String (Inverter_Name_Store));
-         else
-            Connect (To_String (Inverter_Name_store),
-                     Port_Type'Value (To_String (Port_Store)));
-         end if; -- Length (Port_Store) = 0
       end Start;
+      Heartbeat.Beat;
+      Try_Connect;
       While Run_Logger loop
          select
             accept Stop do
@@ -334,30 +399,32 @@ package body Data_Logger is
                Previous_Time := Next_Time;
                Next_Time := Next_Time + Log_Interval;
             end if; -- Is_Next_Day (Previous_Time, Next_Time)
-            begin -- Read_innverter_exception block
-               Put_Log_Entry (Logging_File);
-            exception
-               when Modbus_Error =>
-                  Close_Connection;
-                  Delay 30.0;
-                  if Length (Port_Store) = 0 then
-                     Connect (To_String (Inverter_Name_Store));
-                  else
-                     Connect (To_String (Inverter_Name_store),
-                              Port_Type'Value (To_String (Port_Store)));
-                  end if; -- Length (Port_Store) = 0
-                  Put_Event ("Restarting Modbus connection");
-            end; -- Read_innverter_exception block
+            if not Is_Connected then
+               Try_Connect;
+            end if; -- not Is_Connected
+            if Is_Connected then
+               begin -- Read_inverter_exception block
+                  Put_Log_Entry (Logging_File);
+               exception
+                  when E : Modbus_Error =>
+                     -- DJH.Modbus closes the connection if it is no longer
+                     -- usable, reconnection is attempted next interval.
+                     Put_Error ("Logger - Modbus read failed", E);
+               end; -- Read_inverter_exception block
+            end if; -- Is_Connected
             if Clock >= Logging_File_Commit_Time.Get_Next_File_Commit then
                Flush (Logging_File);
                Logging_File_Commit_Time.Set_Next_File_Commit;
             end if; -- Clock >= File_Commit_Time
+            Heartbeat.Beat;
          end select;
       end loop;
    exception
       when E : others =>
          Put_Error ("Logger", E);
-         Close (Logging_File);
+         if Is_Open (Logging_File) then
+            Close (Logging_File);
+         end if; -- Is_Open (Logging_File)
          Close_Connection;
          raise;
    end Logger;

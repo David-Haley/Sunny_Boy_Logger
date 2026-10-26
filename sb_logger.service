@@ -1,0 +1,18 @@
+[Unit]
+Description=SMA Sunny Boy 1.5 data logger
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=david
+WorkingDirectory=/home/david/SB_Logger
+ExecStart=/home/david/SB_Logger/sb_logger
+Restart=always
+RestartSec=120
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
