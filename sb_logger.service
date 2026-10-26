@@ -1,17 +1,18 @@
 [Unit]
-Description=SB_Logger data logger for SMA Sunny Boy inverter
-Wants=network-online.target time-sync.target
-After=network-online.target time-sync.target
+Description=SMA Sunny Boy 1.5 data logger
+After=network-online.target
+Wants=network-online.target
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 User=david
-WorkingDirectory=/home/david/SB_Logger/
-ExecStart=/home/david/SB_Logger/sb_logger SMA1930015238
-TimeoutStopSec=120
+WorkingDirectory=/home/david/SB_Logger
+ExecStart=/home/david/SB_Logger/sb_logger
 Restart=always
-RestartSec=60
+RestartSec=120
+NoNewPrivileges=yes
+PrivateTmp=yes
 
 [Install]
 WantedBy=multi-user.target
