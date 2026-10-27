@@ -1,8 +1,9 @@
 -- This package provides data logging for the SMA SB1.5-VL-40
 -- Author    : David Haley
 -- Created   : 04/04/2021
--- Last Edit : 26/10/2026
+-- Last Edit : 27/10/2026
 
+--  20261027: MQTT publishing added.
 -- 20261026: Modbus connection is (re)established at the next logging interval
 -- after any failure, including failure to connect on start up. Connection
 -- events logged only on change of state. Heartbeat added.
@@ -340,7 +341,7 @@ package body Data_Logger is
 
    task body Logger is
 
-      Inverter_Name_Store, Port_Store : Unbounded_String;
+      Inverter_Name_Store;
       Run_Logger : Boolean := True;
       Next_Time, Previous_Time : Time;
       Was_Connected : Boolean := True;
@@ -351,12 +352,7 @@ package body Data_Logger is
          -- attempt succeeded, retry occurs at the next logging interval.
 
       begin -- Try_Connect
-         if Length (Port_Store) = 0 then
-            Connect (To_String (Inverter_Name_Store));
-         else
-            Connect (To_String (Inverter_Name_Store),
-                     Port_Type'Value (To_String (Port_Store)));
-         end if; -- Length (Port_Store) = 0
+         Connect (To_String (Inverter_Name_Store));
          Put_Event ("Modbus connected");
          Was_Connected := True;
       exception
@@ -368,9 +364,12 @@ package body Data_Logger is
       end Try_Connect;
 
    begin -- Logger
-      accept Start (Inverter_Name : in String; Port : in String := "") do
+      accept Start (Inverter_Name : in String;
+                    Broker : in String;
+                    User : in String;
+                    Password: in String;
+                    Topic : in String) do
          Inverter_Name_Store := To_Unbounded_String (Inverter_Name);
-         Port_Store := To_Unbounded_String (Port);
          Start_Logging (Logging_File, Next_Time);
          Previous_Time := Next_Time - Log_Interval;
       end Start;
