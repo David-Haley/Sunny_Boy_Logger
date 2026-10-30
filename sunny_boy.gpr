@@ -1,4 +1,3 @@
-with "../Pi_Common/lib_mosquitto.gpr";
 with "gnatcoll";
 project Sunny_Boy is
 
@@ -10,12 +9,13 @@ project Sunny_Boy is
 
    package Compiler is
      for Default_Switches ("Ada") use ("-g", "-gnat2022", "-gnatwa",
-       "-gnatVa", "-gnatyk", "-gnaty3", "-gnatya", "-gnatyk", "-gnatyl",
+       "-fstack-check", "-gnatVa", "-gnatyk", "-gnaty3", "-gnatya", "-gnatyk", "-gnatyl",
        "-gnatyn", "-gnatyr", "-gnaty-d");
    end Compiler;
    
    package Linker is
-      for Switches ("ada") use ("-g");
+      for Switches ("ada") use ("-g", "-lmosquitto");
+      --  Found by the system linker, allowing 32 or 64 bit targets.
    end Linker;
 
    package Binder is

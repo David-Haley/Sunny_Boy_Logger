@@ -3,7 +3,7 @@
 --  Created   : 04/04/2021
 --  Last Edit : 30/10/2026
 
---  20261030 : Port parameter removed and provision for MQTT brker added.
+--  20261030 : Port parameter removed and provision for MQTT broker added.
 --  20261026: Heartbeat_Age added to allow detection of a failed Logger task.
 --  20220813: Provide for Inverter Name and Port being set by caller.
 

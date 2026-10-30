@@ -3,7 +3,8 @@
 -- Created   : 04/04/2021
 -- Last Edit : 31/10/2026
 
---  20261031: MQTT publishing added.
+--  20261031: MQTT publishing added, a MQTT failure does not stop logging, MQTT
+--  failure and recovery logged only on change of state.
 -- 20261026: Modbus connection is (re)established at the next logging interval
 -- after any failure, including failure to connect on start up. Connection
 -- events logged only on change of state. Heartbeat added.
@@ -32,8 +33,8 @@ with Ada.Strings; use Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Ada.Real_Time;
+with Ada.Exceptions; use Ada.Exceptions;
 with Interfaces; use Interfaces;
-with GNATCOLL; use GNATCOLL;
 with GNATCOLL.JSON; use GNATCOLL.JSON;
 with DJH.Modbus; use DJH.Modbus;
 with DJH.Date_and_Time_Strings; use DJH.Date_and_Time_Strings;
@@ -232,7 +233,8 @@ package body Data_Logger is
    end Start_Logging;
 
    procedure Put_Log_Entry (Logging_File : in out File_Type;
-                            Tx_Handle : in out MQTT_Handle) is
+                            Tx_Handle : in MQTT_Handle;
+                            MQTT_Failure : in out Unbounded_String) is
 
       type Currents is delta 0.001 range 0.0 .. 12000.0;
       -- 1000 times required range to allow for division by 1000.0
@@ -323,12 +325,10 @@ package body Data_Logger is
          Set_Field (Message, "DC_Current", Trim (Out_String, Both));
          Voltage_IO.Put (Out_String, DC_Voltage, 2, 0);
          Log_Entry := Log_Entry & Trim (Out_String, Both) & ',' &
-           Trim (To_U32 (Power (30771 .. 30772))'Img, Both) & ','; -- DC Power
+           Trim (To_U32 (Power (30773 .. 30774))'Img, Both) & ','; -- DC Power
          Set_Field (Message, "DC_Voltage", Trim (Out_String, Both));
-         Set_Field (Message, "DC_Power", Trim (Out_String, Both));
-         Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
          Set_Field (Message, "DC_Power",
-           Trim (To_U32 (Power (30771 .. 30772))'Img, Both));
+           Trim (To_U32 (Power (30773 .. 30774))'Img, Both));
          Current_IO.Put (Out_String, AC_Current, 3, 0);
          Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
          Set_Field (Message, "AC_Current", Trim (Out_String, Both));
@@ -349,8 +349,16 @@ package body Data_Logger is
            Trim (To_U64 (Yield (30517 .. 30520))'Img, Both));
          Set_Field (Message, "Total_Yield",
            Trim (To_U64 (Yield (30513 .. 30516))'Img, Both));
+         Set_Field (Message, "message_time_utc", Image (Clock));
          if Is_Connected_Tx (Tx_Handle) then
-            Send (Tx_Handle, Write (Message));
+            begin -- Send exception block
+               Send (Tx_Handle, Write (Message));
+               MQTT_Failure := Null_Unbounded_String;
+            exception
+               when E : MQTT_Error =>
+                  -- Reported by Check_MQTT, must not stop logging
+                  MQTT_Failure := To_Unbounded_String (Exception_Message (E));
+            end; -- Send exception block
          end if; -- Is_Connected_Tx (Tx_Handle)
       end if; -- Valid_Entry
    exception
@@ -386,6 +394,31 @@ package body Data_Logger is
       end Try_Connect;
 
       Tx_Handle : MQTT_Handle;
+      MQTT_Failure : Unbounded_String;
+      -- Empty unless the last Connect_Tx or Send raised MQTT_Error
+      Was_MQTT_Healthy : Boolean := True;
+      -- Assumed True so that a broker unavailable at start up is logged
+
+      procedure Check_MQTT is
+         -- Logs one event when a failure is first detected and one on recovery,
+         -- nothing is logged while the state is unchanged.
+
+         Healthy : constant Boolean := Is_Connected_Tx (Tx_Handle) and
+           Length (MQTT_Failure) = 0;
+
+      begin -- Check_MQTT
+         if Was_MQTT_Healthy and not Healthy then
+            if Length (MQTT_Failure) = 0 then
+               Put_Event ("MQTT not connected, last error:" &
+                            Last_Error (Tx_Handle)'Img);
+            else
+               Put_Event ("MQTT failed - " & To_String (MQTT_Failure));
+            end if; -- Length (MQTT_Failure) = 0
+         elsif Healthy and not Was_MQTT_Healthy then
+            Put_Event ("MQTT restored");
+         end if; -- Was_MQTT_Healthy and not Healthy
+         Was_MQTT_Healthy := Healthy;
+      end Check_MQTT;
 
    begin -- Logger
       accept Start (Inverter_Name : in String;
@@ -396,7 +429,13 @@ package body Data_Logger is
          Inverter_Name_Store := To_Unbounded_String (Inverter_Name);
          Start_Logging (Logging_File, Next_Time);
          Previous_Time := Next_Time - Log_Interval;
-         Connect_Tx (Broker, User, Password, Topic, Tx_Handle);
+         begin -- Connect_Tx exception block
+            Connect_Tx (Broker, User, Password, Topic, Tx_Handle);
+         exception
+            when E : MQTT_Error =>
+               -- Reported by Check_MQTT, must not stop logging
+               MQTT_Failure := To_Unbounded_String (Exception_Message (E));
+         end; -- Connect_Tx exception block
       end Start;
       Heartbeat.Beat;
       Try_Connect;
@@ -406,7 +445,12 @@ package body Data_Logger is
                Run_Logger := False;
                Close (Logging_File);
                Close_Connection;
-               Disconnect (Tx_Handle);
+               begin -- Disconnect exception block
+                  Disconnect (Tx_Handle);
+               exception
+                  when E : MQTT_Error =>
+                     Put_Error ("Logger - MQTT disconnect", E);
+               end; -- Disconnect exception block
             end Stop;
          or
             delay until Next_Time;
@@ -429,7 +473,7 @@ package body Data_Logger is
             end if; -- not Is_Connected
             if Is_Connected then
                begin -- Read_inverter_exception block
-                  Put_Log_Entry (Logging_File, Tx_Handle);
+                  Put_Log_Entry (Logging_File, Tx_Handle, MQTT_Failure);
                exception
                   when E : Modbus_Error =>
                      -- DJH.Modbus closes the connection if it is no longer
@@ -437,6 +481,7 @@ package body Data_Logger is
                      Put_Error ("Logger - Modbus read failed", E);
                end; -- Read_inverter_exception block
             end if; -- Is_Connected
+            Check_MQTT;
             if Clock >= Logging_File_Commit_Time.Get_Next_File_Commit then
                Flush (Logging_File);
                Logging_File_Commit_Time.Set_Next_File_Commit;
