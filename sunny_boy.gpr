@@ -1,12 +1,12 @@
 with "../Pi_Common/lib_mosquitto.gpr";
-with gnatcoll;
+with "gnatcoll";
 project Sunny_Boy is
 
    for Source_Dirs use ("src", "../DJH/src", "../Pi_Common/src");
    for Object_Dir use "obj";
    for Create_Missing_Dirs use "True";
    for Exec_Dir use "bin";
-   for Main use ("sb_logger.adb", configure_sb_logger.adb");
+   for Main use ("sb_logger.adb", "configure_sb_logger.adb");
 
    package Compiler is
      for Default_Switches ("Ada") use ("-g", "-gnat2022", "-gnatwa",

@@ -1,9 +1,9 @@
 -- This package provides data logging for the SMA SB1.5-VL-40
 -- Author    : David Haley
 -- Created   : 04/04/2021
--- Last Edit : 27/10/2026
+-- Last Edit : 31/10/2026
 
---  20261028: MQTT publishing added.
+--  20261031: MQTT publishing added.
 -- 20261026: Modbus connection is (re)established at the next logging interval
 -- after any failure, including failure to connect on start up. Connection
 -- events logged only on change of state. Heartbeat added.
@@ -33,7 +33,6 @@ with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Ada.Real_Time;
 with Interfaces; use Interfaces;
-with GNAT.Sockets; use GNAT.Sockets;
 with GNATCOLL; use GNATCOLL;
 with GNATCOLL.JSON; use GNATCOLL.JSON;
 with DJH.Modbus; use DJH.Modbus;
@@ -150,14 +149,14 @@ package body Data_Logger is
       return Logging_File_Commit_Time.Get_Next_File_Commit;
    end Read_File_Commit_Time;
    
-   function Logging_Path (This_Time : Time) return string is
+   function Logging_Path (This_Time : Time) return String is
       -- returns "YYYY" representing the current year
 
    begin -- Logging_Path
       return Reverse_Date_String (This_Time) (1..4);
    end Logging_Path;
 
-   function Logging_File_Name (This_Time : Time) return string is
+   function Logging_File_Name (This_Time : Time) return String is
       -- returns "YYYYMMDD.csv" where YYYYMMDD represents the current date
 
    begin -- Logging_File_Name
@@ -224,7 +223,7 @@ package body Data_Logger is
       end if; -- Next_Day (This_Time, This_Time + Log_Interval)
    end Calculate_Next_Log_Entry;
 
-   Procedure Start_Logging (Logging_File : in out File_Type;
+   procedure Start_Logging (Logging_File : in out File_Type;
                             Next_Log_Entry : out Time) is
 
    begin -- Start_Logging
@@ -233,7 +232,7 @@ package body Data_Logger is
    end Start_Logging;
 
    procedure Put_Log_Entry (Logging_File : in out File_Type;
-                            Tx_Handle : in out MQTT_Handles) is
+                            Tx_Handle : in out MQTT_Handle) is
 
       type Currents is delta 0.001 range 0.0 .. 12000.0;
       -- 1000 times required range to allow for division by 1000.0
@@ -263,7 +262,7 @@ package body Data_Logger is
       Out_String : String (1 .. 15);
       Log_Entry : Unbounded_String := To_Unbounded_String (Time_String & ",");
       Valid_Entry : Boolean;
-      Message : JSON_Value := Create_Object;
+      Message : constant JSON_Value := Create_Object;
       Error_Prefix : constant String := "Put_Log_Entry - ";
 
    begin -- Put_Log_Entry
@@ -281,7 +280,7 @@ package body Data_Logger is
         To_U32 (Grid_Frequency) /= NaN_U32 and
         To_U64 (Yield (30513 ..30516)) /= NaN_U64 and -- Total yield
         To_U64 (Yield (30517 ..30520)) /= NaN_U64; --
-      if Valid_entry then
+      if Valid_Entry then
          begin -- DC_Current exception block
             DC_Current := Currents (To_U32 (Power (30769 .. 30770))) / 1000.0;
          exception
@@ -304,7 +303,7 @@ package body Data_Logger is
                Valid_Entry := False;
          end; -- AC_Current exception block
          begin -- AC_Voltage exception bloc
-           AC_Voltage := Voltages (To_U32 (L1_Voltage)) / 100.0;
+            AC_Voltage := Voltages (To_U32 (L1_Voltage)) / 100.0;
          exception
             when E : others =>
                Put_Error (Error_Prefix & "AC_Voltage", E);
@@ -351,7 +350,7 @@ package body Data_Logger is
          Set_Field (Message, "Total_Yield",
            Trim (To_U64 (Yield (30513 .. 30516))'Img, Both));
          if Is_Connected_Tx (Tx_Handle) then
-            Publish (Tx_Handle, Write (Message));
+            Send (Tx_Handle, Write (Message));
          end if; -- Is_Connected_Tx (Tx_Handle)
       end if; -- Valid_Entry
    exception
@@ -364,7 +363,7 @@ package body Data_Logger is
 
    task body Logger is
 
-      Inverter_Name_Store;
+      Inverter_Name_Store : Unbounded_String;
       Run_Logger : Boolean := True;
       Next_Time, Previous_Time : Time;
       Was_Connected : Boolean := True;
@@ -386,7 +385,7 @@ package body Data_Logger is
             end if; -- Was_Connected
       end Try_Connect;
 
-      Tx_Handle : MQTT_Handles := 0;
+      Tx_Handle : MQTT_Handle;
 
    begin -- Logger
       accept Start (Inverter_Name : in String;
@@ -401,13 +400,13 @@ package body Data_Logger is
       end Start;
       Heartbeat.Beat;
       Try_Connect;
-      While Run_Logger loop
+      while Run_Logger loop
          select
             accept Stop do
-               Run_logger := False;
+               Run_Logger := False;
                Close (Logging_File);
                Close_Connection;
-               Close (Tx_Handle);
+               Disconnect (Tx_Handle);
             end Stop;
          or
             delay until Next_Time;

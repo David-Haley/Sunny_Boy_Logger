@@ -1,13 +1,12 @@
 --  This package provides data logging for the SMA SB1.5-VL-40
 --  Author    : David Haley
 --  Created   : 04/04/2021
---  Last Edit : 27/10/2026
+--  Last Edit : 30/10/2026
 
---  20261027 : Port parameter removed and provision for MQTT brker added.
+--  20261030 : Port parameter removed and provision for MQTT brker added.
 --  20261026: Heartbeat_Age added to allow detection of a failed Logger task.
 --  20220813: Provide for Inverter Name and Port being set by caller.
 
-with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Calendar; use Ada.Calendar;
 
 package Data_Logger is

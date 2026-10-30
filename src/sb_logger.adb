@@ -1,9 +1,9 @@
 -- Main program for logging SB 1.5 VL -40 via Modbus
 -- Author    : David Haley
 -- Created   : 04/04/2021
--- Last Edit : 27/10/2026
+-- Last Edit : 30/10/2026
 
---  20261027: Publishes logger parameters as a MQTT stream. Configuration is now
+--  20261030: Publishes logger parameters as a MQTT stream. Configuration is now
 --  read from a configuration file, default Modbus port is assumed.
 -- 20261026: Logger task supervised, if it terminates or stops updating its
 -- heartbeat the program exits with failure status, allowing systemd to restart
@@ -25,6 +25,7 @@
 -- 20220820: Events_and_Errors moved to DJH.Events_and_Errors
 -- 20220813: Modified to work as a service.
 
+with Ada.Text_IO; use Ada.Text_IO;
 with GNAT.OS_Lib;
 with DJH.Events_and_Errors; use DJH.Events_and_Errors;
 with Linux_Signals; use Linux_Signals;
@@ -38,8 +39,7 @@ procedure SB_Logger is
       DJH.JSON_Configuration (Parameters, Configuration_File, Encrypted);
    use Configuration;
 
-   Start_Message : String := "SB_Logger 20261028 Started, Inverter: ";
-   Default_Inverter : String := "SMA1930015238";
+   Start_Message : constant String := "SB_Logger 20261030 Started, Inverter: ";
    Heartbeat_Timeout : constant Duration := 300.0;
    -- Five logging intervals, all Modbus operations are time limited
 
