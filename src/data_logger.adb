@@ -3,7 +3,7 @@
 -- Created   : 04/04/2021
 -- Last Edit : 27/10/2026
 
---  20261027: MQTT publishing added.
+--  20261028: MQTT publishing added.
 -- 20261026: Modbus connection is (re)established at the next logging interval
 -- after any failure, including failure to connect on start up. Connection
 -- events logged only on change of state. Heartbeat added.
@@ -34,9 +34,12 @@ with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Ada.Real_Time;
 with Interfaces; use Interfaces;
 with GNAT.Sockets; use GNAT.Sockets;
+with GNATCOLL; use GNATCOLL;
+with GNATCOLL.JSON; use GNATCOLL.JSON;
 with DJH.Modbus; use DJH.Modbus;
 with DJH.Date_and_Time_Strings; use DJH.Date_and_Time_Strings;
 with DJH.Events_and_Errors; use DJH.Events_and_Errors;
+with MQTT_Client; use MQTT_Client;
 
 package body Data_Logger is
    Logging_File : File_Type;
@@ -229,7 +232,8 @@ package body Data_Logger is
       Open_Log_File (Logging_File, Next_Log_Entry);
    end Start_Logging;
 
-   procedure Put_Log_Entry (Logging_File : in out File_Type) is
+   procedure Put_Log_Entry (Logging_File : in out File_Type;
+                            Tx_Handle : in out MQTT_Handles) is
 
       type Currents is delta 0.001 range 0.0 .. 12000.0;
       -- 1000 times required range to allow for division by 1000.0
@@ -259,6 +263,7 @@ package body Data_Logger is
       Out_String : String (1 .. 15);
       Log_Entry : Unbounded_String := To_Unbounded_String (Time_String & ",");
       Valid_Entry : Boolean;
+      Message : JSON_Value := Create_Object;
       Error_Prefix : constant String := "Put_Log_Entry - ";
 
    begin -- Put_Log_Entry
@@ -316,20 +321,38 @@ package body Data_Logger is
       if Valid_Entry then
          Current_IO.Put (Out_String, DC_Current, 3, 0);
          Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
+         Set_Field (Message, "DC_Current", Trim (Out_String, Both));
          Voltage_IO.Put (Out_String, DC_Voltage, 2, 0);
          Log_Entry := Log_Entry & Trim (Out_String, Both) & ',' &
-           Trim (To_U32 (Power (30773 .. 30774))'Img, Both) & ','; -- DC Power
+           Trim (To_U32 (Power (30771 .. 30772))'Img, Both) & ','; -- DC Power
+         Set_Field (Message, "DC_Voltage", Trim (Out_String, Both));
+         Set_Field (Message, "DC_Power", Trim (Out_String, Both));
+         Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
+         Set_Field (Message, "DC_Power",
+           Trim (To_U32 (Power (30771 .. 30772))'Img, Both));
          Current_IO.Put (Out_String, AC_Current, 3, 0);
          Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
+         Set_Field (Message, "AC_Current", Trim (Out_String, Both));
          Voltage_IO.Put (Out_String, AC_Voltage, 2, 0);
          Log_Entry := Log_Entry & Trim (Out_String, Both) & ',' &
            Trim (To_U32 (Power (30775 .. 30776))'Img, Both) & ','; -- AC Power
+         Set_Field (Message, "AC_Voltage", Trim (Out_String, Both));
+         Set_Field (Message, "AC_Power",
+          Trim (To_U32 (Power (30775 .. 30776))'Img, Both));
          Frequency_IO.Put (Out_String, Frequency, 2, 0);
          Log_Entry := Log_Entry & Trim (Out_String, Both) & ',';
+         Set_Field (Message, "Frequency", Trim (Out_String, Both));
          Log_Entry := Log_Entry &
            Trim (To_U64 (Yield (30517 .. 30520))'Img, Both) & ',' & -- Day Yield
            Trim (To_U64 (Yield (30513 .. 30516))'Img, Both); -- Total Yield
          Put_Line (Logging_File, Log_Entry);
+         Set_Field (Message, "Daily_Yield",
+           Trim (To_U64 (Yield (30517 .. 30520))'Img, Both));
+         Set_Field (Message, "Total_Yield",
+           Trim (To_U64 (Yield (30513 .. 30516))'Img, Both));
+         if Is_Connected_Tx (Tx_Handle) then
+            Publish (Tx_Handle, Write (Message));
+         end if; -- Is_Connected_Tx (Tx_Handle)
       end if; -- Valid_Entry
    exception
       when Modbus_Error =>
@@ -363,6 +386,8 @@ package body Data_Logger is
             end if; -- Was_Connected
       end Try_Connect;
 
+      Tx_Handle : MQTT_Handles := 0;
+
    begin -- Logger
       accept Start (Inverter_Name : in String;
                     Broker : in String;
@@ -372,6 +397,7 @@ package body Data_Logger is
          Inverter_Name_Store := To_Unbounded_String (Inverter_Name);
          Start_Logging (Logging_File, Next_Time);
          Previous_Time := Next_Time - Log_Interval;
+         Connect_Tx (Broker, User, Password, Topic, Tx_Handle);
       end Start;
       Heartbeat.Beat;
       Try_Connect;
@@ -381,6 +407,7 @@ package body Data_Logger is
                Run_logger := False;
                Close (Logging_File);
                Close_Connection;
+               Close (Tx_Handle);
             end Stop;
          or
             delay until Next_Time;
@@ -403,7 +430,7 @@ package body Data_Logger is
             end if; -- not Is_Connected
             if Is_Connected then
                begin -- Read_inverter_exception block
-                  Put_Log_Entry (Logging_File);
+                  Put_Log_Entry (Logging_File, Tx_Handle);
                exception
                   when E : Modbus_Error =>
                      -- DJH.Modbus closes the connection if it is no longer

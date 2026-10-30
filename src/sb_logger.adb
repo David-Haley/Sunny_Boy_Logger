@@ -38,7 +38,7 @@ procedure SB_Logger is
       DJH.JSON_Configuration (Parameters, Configuration_File, Encrypted);
    use Configuration;
 
-   Start_Message : String := "SB_Logger 20261026 Started, Inverter: ";
+   Start_Message : String := "SB_Logger 20261028 Started, Inverter: ";
    Default_Inverter : String := "SMA1930015238";
    Heartbeat_Timeout : constant Duration := 300.0;
    -- Five logging intervals, all Modbus operations are time limited
