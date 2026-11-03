@@ -7,6 +7,8 @@ StartLimitIntervalSec=0
 [Service]
 Type=simple
 User=david
+# SB_Logger_Configuration.json must be in WorkingDirectory, the program will
+# not start without it. Create it with configure_sb_logger.
 WorkingDirectory=/home/david/SB_Logger
 ExecStart=/home/david/SB_Logger/sb_logger
 Restart=always

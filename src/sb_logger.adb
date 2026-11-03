@@ -1,8 +1,11 @@
 -- Main program for logging SB 1.5 VL -40 via Modbus
 -- Author    : David Haley
 -- Created   : 04/04/2021
--- Last Edit : 26/10/2026
+-- Last Edit : 31/10/2026
 
+--  20261031: User and Password may be empty, inverter name logged.
+--  20261030: Publishes logger parameters as a MQTT stream. Configuration is now
+--  read from a configuration file, default Modbus port is assumed.
 -- 20261026: Logger task supervised, if it terminates or stops updating its
 -- heartbeat the program exits with failure status, allowing systemd to restart
 -- the service.
@@ -23,35 +26,60 @@
 -- 20220820: Events_and_Errors moved to DJH.Events_and_Errors
 -- 20220813: Modified to work as a service.
 
-with Ada.Command_line; use Ada.Command_line;
+with Ada.Text_IO; use Ada.Text_IO;
 with GNAT.OS_Lib;
 with DJH.Events_and_Errors; use DJH.Events_and_Errors;
 with Linux_Signals; use Linux_Signals;
+with Common_Configuration; use Common_Configuration;
+with DJH.JSON_Configuration;
 with Data_Logger; use Data_Logger;
 
 procedure SB_Logger is
 
-Start_Message : String := "SB_Logger 20261026 Started, Inverter: ";
-Default_Inverter : String := "SMA1930015238";
-Heartbeat_Timeout : constant Duration := 300.0;
--- Five logging intervals, all Modbus operations are time limited
+   package Configuration is new
+      DJH.JSON_Configuration (Parameters, Configuration_File, Encrypted);
+   use Configuration;
 
-function Logger_Failed return Boolean is
-  (Logger'Terminated or else Heartbeat_Age > Heartbeat_Timeout);
+   Start_Message : constant String := "SB_Logger 20261031 Started";
+   Heartbeat_Timeout : constant Duration := 300.0;
+   -- Five logging intervals, all Modbus operations are time limited
+
+   function Logger_Failed return Boolean is
+   (Logger'Terminated or else Heartbeat_Age > Heartbeat_Timeout);
+
+   function Value_Or_Empty (Parameter : Parameters) return String is
+      -- Get_Value raises JSON_Configuration_Error if the value is empty
+
+   begin -- Value_Or_Empty
+      return Get_Value (Parameter);
+   exception
+      when JSON_Configuration_Error =>
+         return "";
+   end Value_Or_Empty;
 
 begin -- SB_Logger
-   Handlers.Install;
-   delay 45.0; -- Wait for DNS service availability
-   if Argument_Count > 1 then
-      Put_Event (Start_Message & Argument (1) & " Port: " & Argument (2));
-      Logger.Start (Argument (1), Argument (2));
-   elsif Argument_Count > 0 then
-      Put_Event (Start_Message & Argument (1));
-      Logger.Start (Argument (1));
+   Put_Line (Start_Message);
+   Put_Event (Start_Message);
+   if Configuration_File_Exists then
+      Read_Configuration;
+      Put_Line ("Read " & Configuration_File);
+      Put_Event ("Read " & Configuration_File);
    else
-      Put_Event (Start_Message & Default_Inverter);
-      Logger.Start (Default_inverter);
-   end if; -- Argument_Count > 1
+      raise JSON_Configuration_Error with "Missing configuration file " &
+        Configuration_File;
+   end if; -- Configuration_File_Exists
+   Handlers.Install;
+   delay Duration'Value (Get_Value (Start_Delay));
+   --  Originally provided to wait for DNS service availability, this can be
+   --  covered by correctly configuring the systemd service to wait for
+   --  network availability. A delay may be desirable to provide for the
+   --  inverter to start and connect to the network.
+   Logger.Start (Get_Value (Inverter),
+                 Get_Value (Broker),
+                 Value_Or_Empty (User),
+                 Value_Or_Empty (Password),
+                 Get_Value (Topic));
+   Put_Event ("Logger task started, Inverter: " & Get_Value (Inverter));
    loop
       delay 1.0;
       exit when Handlers.Signal_Stop or Ctrl_C_Stop or Logger_Failed;

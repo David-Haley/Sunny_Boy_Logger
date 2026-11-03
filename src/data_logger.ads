@@ -1,18 +1,23 @@
--- This package provides data logging for the SMA SB1.5-VL-40
--- Author    : David Haley
--- Created   : 04/04/2021
--- Last Edit : 26/10/2026
--- 20261026: Heartbeat_Age added to allow detection of a failed Logger task.
--- 20220813: Provide for Inverter Name and Port being set by caller.
+--  This package provides data logging for the SMA SB1.5-VL-40
+--  Author    : David Haley
+--  Created   : 04/04/2021
+--  Last Edit : 30/10/2026
 
-with Ada.Text_IO; use Ada.Text_IO;
+--  20261030 : Port parameter removed and provision for MQTT broker added.
+--  20261026: Heartbeat_Age added to allow detection of a failed Logger task.
+--  20220813: Provide for Inverter Name and Port being set by caller.
+
 with Ada.Calendar; use Ada.Calendar;
 
 package Data_Logger is
    
    task Logger is
-      -- Logger task declaration
-      entry Start  (Inverter_Name : in String; Port : in String := "");
+      --  Logger task declaration
+      entry Start  (Inverter_Name : in String;
+                    Broker : in String;
+                    User : in String;
+                    Password: in String;
+                    Topic : in String);
       entry Stop;
    end Logger;
 
